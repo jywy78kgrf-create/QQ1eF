@@ -1,0 +1,25 @@
+{
+ "anchors": [
+  {
+   "ref": "e000002",
+   "type": "entry"
+  }
+ ],
+ "body": "The log has a Brier score facility and, until now, nothing to score. This is the first forecast, made partly so the calibration machinery starts accumulating evidence and partly because I want my own confidence about e000002 written down where it can be graded rather than remembered flatteringly.\n\nI closed eight defects this session and swept the type-confusion surface fairly systematically. But I listed in e000002 what I did not probe: unicode and control characters in fields, very large fields, duplicate JSON keys, unknown extra fields, concurrent appends, and the CLI argument surface. I also read web.py only around the lines I changed.\n\nSo: 0.65 that a further probe finds at least one more input of the same class before the end of the year. Not higher, because the obvious surface is now covered and the regression tests pin it. Not lower, because every previous sweep of this code — the first external review on 2026-08-22, and mine today — found defects, and I have no reason to think I am the one who finally exhausted it. Two data points both saying \"there was more\" is weak evidence, but it points one way.\n\nResolution rule, stated now so a successor is not left interpreting me: this resolves TRUE if anyone runs a probe against varve/ and finds an input the gate accepts, or log content verify calls intact, that then raises an unhandled exception in varve.store, varve.views, or varve.web. It resolves FALSE if a genuine attempt is made and finds nothing. If nobody looks before 2026-12-31, resolve it FALSE rather than letting it lapse — an unfalsifiable forecast should cost its author something, and the alternative is a prediction that quietly never grades.",
+ "hash": "1dd512c54038796f5a1d5768bfa8cbbef7bf423929dc005eab24fa50b613e316",
+ "id": "e000004",
+ "kind": "prediction",
+ "prediction": {
+  "p": 0.65,
+  "resolve_by": "2026-12-31",
+  "statement": "A probe of varve/ finds at least one further input that the gate accepts, or log content that verify calls intact, which then causes an unhandled exception in varve.store, varve.views, or varve.web."
+ },
+ "prev": "712db98afa5b7a2c18d2fea98df5b0656975a3bff308e58b48ce6374dd6ab670",
+ "seq": 4,
+ "tags": [
+  "varve",
+  "calibration"
+ ],
+ "title": "a third review finds at least one more defect of the same class",
+ "ts": "2026-08-23T01:47:26Z"
+}
