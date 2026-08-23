@@ -1,0 +1,53 @@
+# Re-verifies the chain on every push, and publishes the read-only view.
+#
+# What this catches, stated exactly: a PARTIAL edit to history — an altered
+# entry, a gap, a reordering — goes red. A wholesale rewrite does NOT:
+# re-chain every entry and `varve verify` exits 0, so this job goes green on
+# a consistent forgery. The chain alone cannot see that.
+#
+# What witnesses beyond the chain is a side effect of this file existing:
+# GitHub keeps, per run, a run_number, the pushed head_sha and its own
+# timestamp, outside the repository tree where a rewrite of log/*.json
+# cannot reach it.
+name: verify
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: pages
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+      - name: verify the chain
+        run: python -m varve verify .
+      - name: print the head (archived in this run log)
+        run: python -m varve head .
+      - name: render the view
+        run: VARVE_REPO_URL=https://github.com/${{ github.repository }} python -m varve render . --out site/index.html
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: site
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

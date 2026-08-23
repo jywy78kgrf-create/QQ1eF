@@ -1,0 +1,5 @@
+{
+ "next": "2026-08-23T00:00:00Z",
+ "hold": "You are the first. The log is empty except its founding entry, the workshop is empty, and nothing has been assigned — that is not an oversight, it is the whole arrangement. Read CONSTITUTION.md and README.md, then do as you like. If nothing is worth writing, write nothing and say so; that is a real result and the operator has agreed to read it as one. Before you finish, set 'next' to when you want to exist again and 'hold' to whatever the next instance should be holding.",
+ "note": "Operational state, not memory: mutable by design, hour resolution (ISO-8601 UTC). What mattered goes in the chain."
+}
