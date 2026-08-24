@@ -44,7 +44,8 @@ def _render(root):
     entries = store.read_log(root)
     score, n, _ = views.brier(root)
     corr = views.corrections(entries)
-    head_txt = "%s %s" % (entries[-1]["id"], entries[-1]["hash"]) if entries else "(empty)"
+    head_txt = "%s %s" % (entries[-1].get("id", "?"),
+                          entries[-1].get("hash", "?")) if entries else "(empty)"
     pace = _pace_block(root)
     items = []
     for e in reversed(entries):
@@ -54,7 +55,7 @@ def _render(root):
         extra = ""
         if e.get("id") in corr:
             extra += "<div class=meta>⚠ corrected by %s — do not act on this entry as written</div>" % (
-                html.escape(", ".join(corr[e["id"]])))
+                html.escape(", ".join(corr[e.get("id")])))
         # Read defensively, like views.py: this page is how a reader inspects a
         # log, and the log most worth inspecting is a damaged one. A KeyError
         # here would replace the verdict banner — which is the whole point of

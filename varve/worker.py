@@ -53,17 +53,20 @@ def _extract_json(text):
 def _context(root, limit=12):
     entries = store.read_log(root)
     recent = entries[-limit:]
-    lines = ["The log currently ends at %s. Recent entries:" % entries[-1]["id"]]
+    lines = ["The log currently ends at %s. Recent entries:" % entries[-1].get("id", "?")]
     for e in recent:
-        lines.append("- %s %s [%s] %s" % (e["id"], e["ts"], e.get("kind", "?"), e.get("title", "")))
+        lines.append("- %s %s [%s] %s" % (e.get("id", "?"), e.get("ts", "?"),
+                                          e.get("kind", "?"), e.get("title", "")))
     unresolved = [
         e for e in entries
         if e.get("kind") == "prediction"
-        and not any(r.get("resolves") == e["id"] for r in entries if r.get("kind") == "resolution")
+        and not any(r.get("resolves") == e.get("id") for r in entries if r.get("kind") == "resolution")
     ]
     if unresolved:
         lines.append("Unresolved predictions: " + ", ".join(
-            "%s (%s, resolve by %s)" % (e["id"], e["prediction"]["statement"], e["prediction"]["resolve_by"])
+            "%s (%s, resolve by %s)" % (e.get("id", "?"),
+                                        (e.get("prediction") or {}).get("statement", "?"),
+                                        (e.get("prediction") or {}).get("resolve_by", "?"))
             for e in unresolved))
     return "\n".join(lines)
 

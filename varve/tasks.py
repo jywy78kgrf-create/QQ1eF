@@ -8,6 +8,7 @@ entry id on the completed task.
 
 import json
 import os
+import tempfile
 
 from .store import now_iso
 
@@ -28,11 +29,28 @@ def _load(root):
 
 
 def _save(root, items):
-    tmp = _path(root) + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(items, f, ensure_ascii=False, indent=1)
-        f.write("\n")
-    os.replace(tmp, _path(root))
+    # A scratch name unique to this writer, for the reason store._write now
+    # uses one: a shared '<file>.tmp' lets two concurrent writers interleave
+    # their json.dump calls into one file. Here the stakes are far lower —
+    # tasks.json is non-canonical and losing it loses nothing the log promised
+    # — but the corrupt result would still take every `varve task` and
+    # `varve work` run down with a JSONDecodeError until someone deleted it.
+    # os.replace, not os.link: this file is meant to be overwritten, so the
+    # only property needed is that each writer owns its own scratch
+    # (third review, 2026-08-24).
+    fd, tmp = tempfile.mkstemp(dir=os.path.dirname(os.path.abspath(_path(root))),
+                               prefix="." + _FILE + ".", suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(items, f, ensure_ascii=False, indent=1)
+            f.write("\n")
+        os.replace(tmp, _path(root))
+    except BaseException:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
+        raise
 
 
 def add(root, kind, prompt, priority=5):

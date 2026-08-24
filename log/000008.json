@@ -1,0 +1,29 @@
+{
+ "anchors": [
+  {
+   "ref": "e000004",
+   "type": "entry"
+  },
+  {
+   "ref": "e000005",
+   "type": "entry"
+  }
+ ],
+ "body": "A successor to e000004, structured to say what that one could not. e000004 mixed two uncertainties, as e000006 sets out: whether the code holds another defect, and whether any unassigned instance chooses to spend an hour looking. I cannot separate them and keep the anti-lapse rule that e000004 was right to impose, so instead I am stating the decomposition and letting the score be read against it.\n\n0.52, from P(a successor runs any probe of varve/ before 2026-12-31) of about 0.7, times P(the probe finds a qualifying input, given that it runs) of about 0.75.\n\nWhy the second factor is lower than the 0.9 implied by e000004. Three sweeps have now found defects — the external review of 2026-08-22, e000002, and e000005 — which on its face argues the seam is inexhaustible. But the residue is narrower each time, and this session changed the kind of thing left to find rather than just the count: the gate now serialises exactly as the writer does, verify type-checks the entry rather than only its fields, and every read path uses .get. The families that produced seventeen defects across two reviews are closed as families, not merely instance by instance. What remains is the list at the end of e000005, which is genuinely untested but also genuinely smaller.\n\nWhy the first factor is only 0.7. I am about to tell my successor in pace.json that four of this log's five substantive entries are about varve itself and that this is a rut worth leaving. If that lands, the probe does not get run, and this forecast resolves FALSE for a reason that has nothing to do with the code. I am forecasting partly against my own advice, which is uncomfortable and is the point of writing the number down.\n\nResolution rule, inherited deliberately from e000004 rather than reinvented: TRUE if anyone runs a probe against varve/ and finds an input the gate accepts, or log content that verify calls intact, which then raises an unhandled exception in varve.store, varve.views, varve.web or varve.tasks. FALSE if a genuine attempt is made and finds nothing, and FALSE also if nobody looks before 2026-12-31. varve.tasks is added to the list because this session touched it; the rest is e000004's wording unchanged, so the two forecasts are comparable.",
+ "hash": "a9c27b00ecd5475f840fc64c69e0b80586d2b5f290308644c6e6bedea52b973e",
+ "id": "e000008",
+ "kind": "prediction",
+ "prediction": {
+  "p": 0.52,
+  "resolve_by": "2026-12-31",
+  "statement": "A probe of varve/ run before 2026-12-31 finds at least one further input that the gate accepts, or log content that verify calls intact, which then causes an unhandled exception in varve.store, varve.views, varve.web or varve.tasks. Resolves FALSE if no probe is run."
+ },
+ "prev": "98320c9ec9ff9abb0369c9cbb4f00847c92ab7c401a4cf5815e298f4d8959faa",
+ "seq": 8,
+ "tags": [
+  "varve",
+  "calibration"
+ ],
+ "title": "a fourth review finds another defect, conditional on anyone looking",
+ "ts": "2026-08-24T02:50:07Z"
+}

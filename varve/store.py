@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import tempfile
 from datetime import datetime, timezone
 
 from . import validate
@@ -44,6 +45,26 @@ def entry_hash(entry):
     return hashlib.sha256(canonical(entry).encode("utf-8")).hexdigest()
 
 
+def _reject_duplicate_keys(pairs):
+    """json.load's object hook, refusing objects with a repeated key.
+
+    JSON permits duplicates and every mainstream parser silently keeps the
+    last. Here that splits the record in two: a human auditing log/000002.json
+    reads the FIRST "body", while json.load — and so entry_hash, verify, and
+    every view — sees only the second, and calls the file intact. The chain's
+    whole promise is that the bytes on disk and the record are one thing, and
+    rule 5 exists precisely to send strangers to those bytes (third review,
+    2026-08-24).
+    """
+    seen = set()
+    for k, _ in pairs:
+        if k in seen:
+            raise ValueError("duplicate JSON key %r — the file says two things "
+                             "and the chain can only cover one" % k)
+        seen.add(k)
+    return dict(pairs)
+
+
 def read_log(root):
     """All entries in sequence order. Missing dir means no log here."""
     d = _log_dir(root)
@@ -59,16 +80,27 @@ def read_log(root):
     # as a string, which would shuffle the chain right when the log gets long
     for _, name in sorted(found):
         path = os.path.join(d, name)
+        rel = os.path.join(LOG_DIR, name)
         with open(path, "r", encoding="utf-8") as f:
             try:
-                entries.append(json.load(f))
-            except json.JSONDecodeError as exc:
+                entry = json.load(f, object_pairs_hook=_reject_duplicate_keys)
+            except ValueError as exc:
                 # Name the file. An unreadable entry IS a broken chain, and the
                 # reader needs to know which one — a bare JSONDecodeError points
                 # at a column of a file it never names (second review,
-                # 2026-08-23).
-                raise ValueError("%s is not valid JSON: %s" % (
-                    os.path.join(LOG_DIR, name), exc)) from exc
+                # 2026-08-23). JSONDecodeError is a ValueError, and so is the
+                # duplicate-key refusal above; both are the same failure to a
+                # reader, which is "this file is not a readable entry".
+                raise ValueError("%s is not a readable entry: %s" % (rel, exc)) from exc
+        if not isinstance(entry, dict):
+            # '[1,2,3]' or a bare string parses fine and then makes every
+            # .get() in verify() raise AttributeError. e000002 #3 type-checked
+            # the ts FIELD on the reasoning that a verifier which crashes on a
+            # damaged log has failed at its only job; it did not type-check the
+            # entry (third review, 2026-08-24).
+            raise ValueError("%s is not a readable entry: expected a JSON object, got %s"
+                             % (rel, type(entry).__name__))
+        entries.append(entry)
     return entries
 
 
@@ -138,15 +170,50 @@ def append(root, fields):
 
 
 def _write(root, entry):
+    """Write one entry, atomically, without trusting that we are the only writer.
+
+    The previous version derived the scratch name from the sequence number
+    alone ('<path>.tmp') and guarded the destination with os.path.exists. Both
+    halves failed under concurrency, and the first failed catastrophically:
+    every writer racing for the same seq opened the SAME scratch file, and
+    since json.dump writes incrementally and sort_keys makes both emit their
+    keys in the same order, two writers interleaved into a file that still
+    parsed — a well-formed entry carrying one author's title beside another
+    author's body, under a hash covering neither. verify() then reported a
+    content hash mismatch on an entry nobody had tampered with, and rule 1
+    forbids removing it, so the chain was broken permanently. Roughly one in
+    three racing trials produced exactly that (third review, 2026-08-24;
+    workshop/probe-round3.py).
+
+    So: a scratch name unique to this writer, and the destination claimed with
+    os.link, which either creates the name atomically or fails. Content is
+    complete before the name exists, so a crash still cannot leave a partial
+    entry in the chain — the property the old comment claimed and the old code
+    only had while single-threaded.
+    """
     path = _entry_path(root, entry["seq"])
-    if os.path.exists(path):
-        raise ValueError("refusing to overwrite %s" % path)
-    # write-then-rename so a crash never leaves a half-written entry in the chain
-    tmp = path + ".tmp"
-    with open(tmp, "w", encoding="utf-8") as f:
-        json.dump(entry, f, ensure_ascii=False, indent=1, sort_keys=True)
-        f.write("\n")
-    os.replace(tmp, path)
+    # The '.' prefix and '.tmp' suffix both keep scratch files outside _SEQ_RE,
+    # so a crashed writer's leftovers are never read as entries.
+    fd, tmp = tempfile.mkstemp(dir=_log_dir(root),
+                               prefix=".%06d." % entry["seq"], suffix=".tmp")
+    try:
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
+            json.dump(entry, f, ensure_ascii=False, indent=1, sort_keys=True)
+            f.write("\n")
+        try:
+            os.link(tmp, path)
+        except FileExistsError:
+            # Someone else took this sequence number between our read_log and
+            # now. Their entry is whole and ours was never in the chain; the
+            # caller should re-read and retry rather than overwrite.
+            raise ValueError(
+                "refusing to overwrite %s — another writer took seq %d; "
+                "re-read the log and retry" % (path, entry["seq"]))
+    finally:
+        try:
+            os.unlink(tmp)
+        except OSError:
+            pass
 
 
 def head(root):
@@ -192,13 +259,27 @@ def verify(root, expect_head=None):
             problems.append("%s: malformed seq %r (expected an integer)" % (tag, seq))
         elif seq != prev_seq + 1:
             problems.append("%s: sequence gap (expected %d)" % (tag, prev_seq + 1))
+        # An entry with no id walked the chain cleanly here while every
+        # consumer — the views, the web page, and the gate's own id set —
+        # keyed on e["id"] and raised KeyError. verify() calling that log
+        # intact is what made it a defect rather than expected damage
+        # (third review, 2026-08-24).
+        eid = e.get("id")
+        if not isinstance(eid, str) or not re.fullmatch(r"e\d{6,}", eid):
+            problems.append("%s: malformed id %r (expected e000123)" % (tag, eid))
+        elif isinstance(seq, int) and eid != "e%06d" % seq:
+            problems.append("%s: id does not match seq %d" % (tag, seq))
         if e.get("prev", "") != prev_hash:
             problems.append("%s: chain broken (prev hash mismatch)" % tag)
         if entry_hash(e) != e.get("hash"):
             problems.append("%s: content hash mismatch (entry was altered)" % tag)
 
         ts = e.get("ts", "")
-        if not (isinstance(ts, str) and validate.TS_RE.fullmatch(ts)):
+        # Shape is not enough: '2026-13-45T99:99:99Z' full-matches TS_RE, sorts
+        # after its predecessor, and passes every ordering test — then raises
+        # ValueError out of views.digest's strptime. A timestamp that names no
+        # day cannot order a chain (third review, 2026-08-24).
+        if validate.parse_ts(ts) is None:
             problems.append("%s: malformed timestamp %r (expected YYYY-MM-DDThh:mm:ssZ)" % (tag, ts))
         else:
             if prev_ts and ts < prev_ts:

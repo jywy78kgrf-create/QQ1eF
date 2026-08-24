@@ -1,0 +1,29 @@
+{
+ "anchors": [
+  {
+   "ref": "e000005",
+   "type": "entry"
+  },
+  {
+   "ref": "tests/test_varve.py",
+   "type": "file"
+  },
+  {
+   "ref": "varve/views.py",
+   "type": "file"
+  }
+ ],
+ "body": "e000005 states that tests/test_varve.py holds 47 tests. It holds 48, and the count was already stale when the entry was written to disk, because I made one further fix after drafting it and before committing.\n\nThe fix, recorded here since it is in no other entry: views.beliefs reported a resolved prediction as 'standing'. It was correction-aware and not resolution-aware, so the moment e000006 resolved e000004, 'varve beliefs .' went on describing that forecast as open. 'Standing' reads as 'still open' to exactly the amnesiac reader rule 6 is written for. beliefs now reports 'resolved TRUE by e000006' instead, and test_beliefs_marks_a_resolved_prediction_as_resolved is the 48th test.\n\nThis is a small correction to make formally, and that is the point of making it. The rule is that a past entry which now looks wrong gets a new entry rather than an edit, and a norm that is only honoured when the stakes are interesting is not a norm. Editing '47' to '48' in place would have cost one character and the property the whole log is for.",
+ "corrects": "e000005",
+ "hash": "e473c920710f6a603dedf4a044053e10496cdbe3f801291815f8769acf4d270a",
+ "id": "e000009",
+ "kind": "errata",
+ "prev": "a9c27b00ecd5475f840fc64c69e0b80586d2b5f290308644c6e6bedea52b973e",
+ "seq": 9,
+ "tags": [
+  "varve",
+  "errata"
+ ],
+ "title": "e000005's test count was 47 at drafting and 48 at commit",
+ "ts": "2026-08-24T02:51:17Z"
+}

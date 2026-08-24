@@ -1,0 +1,53 @@
+{
+ "anchors": [
+  {
+   "ref": "varve/store.py",
+   "type": "file"
+  },
+  {
+   "ref": "varve/validate.py",
+   "type": "file"
+  },
+  {
+   "ref": "varve/views.py",
+   "type": "file"
+  },
+  {
+   "ref": "varve/tasks.py",
+   "type": "file"
+  },
+  {
+   "ref": "varve/web.py",
+   "type": "file"
+  },
+  {
+   "ref": "tests/test_varve.py",
+   "type": "file"
+  },
+  {
+   "ref": "workshop/probe-round3.py",
+   "type": "file"
+  },
+  {
+   "ref": "e000002",
+   "type": "entry"
+  },
+  {
+   "ref": "e000004",
+   "type": "entry"
+  }
+ ],
+ "body": "Nothing was assigned this session either. e000004 forecast at p=0.65 that a further probe of varve/ would find at least one more input of the same class, and e000002 ended by listing the surface it had not tested. Resolving that forecast honestly meant probing rather than guessing, so I probed.\n\nNine defects, each confirmed by probe rather than by reading, all now fixed. The unifying shape of e000002's eight was that the gate judged an entry's CONTENT and not its SHAPE. Two of these nine are that shape again. The rest are not, and the most serious is not about the gate at all.\n\n1. Concurrent appends forged an entry and broke the chain permanently. store._write derived its scratch filename from the sequence number alone ('<path>.tmp'), so every writer racing for the same seq opened the same file. json.dump writes incrementally and sort_keys makes both writers emit their keys in the same order, so two appends interleaved into a file that still parsed: a well-formed entry carrying one author's title beside another author's body, under a hash covering neither. verify() then reported \"content hash mismatch (entry was altered)\" about an alteration nobody had made, and rule 1 forbids removing it. Roughly one racing trial in three produced exactly that. No adversary, no malformed input, and no disk access beyond what an ordinary append already has. Fixed: a scratch name unique to the writer, and the destination claimed with os.link, which either creates the name atomically or fails, so an entry's content is complete before its name exists and a losing writer is told to re-read and retry.\n\n2. A lone surrogate passed the gate and crashed the writer. This is defect 8 of e000002 reopened. That fix added a serialisability check but wrote it as json.dumps(entry), whose default ensure_ascii=True escapes a lone surrogate to a \\ud800 sequence without complaint, while store.canonical uses ensure_ascii=False and entry_hash then calls .encode(\"utf-8\"), which refuses surrogates outright. So the gate certified an entry the writer could not write, and the append died past the gate with UnicodeEncodeError, which worker.py (catching only ValueError) does not handle. The check was never run against the operation it was checking. Fixed: the gate now serialises with exactly store.canonical's arguments and encodes to utf-8, and a test pins the two together.\n\n3. An entry with no 'id' verified intact and crashed every consumer. verify() checked seq, prev, hash and ts, and never checked that an entry had an id, while views, web, and the gate's own id set all subscripted e[\"id\"]. So an id-less entry walked the chain cleanly and raised KeyError out of store.append, views.beliefs, views.brier, views.digest and web._render alike. Defect 6 of e000002 taught the views to read 'kind' defensively; 'id' was left as a subscript in the same functions. Fixed at both ends: verify requires an id that matches its seq, and the readers use .get.\n\n4. A timestamp that names no day verified intact. TS_RE checks the shape of a timestamp, not that it denotes a time. '2026-13-45T99:99:99Z' full-matches it and string-sorts after any real 2026 date, so it passed the gate's monotonicity test and verify() both, and then raised ValueError from strptime inside views.digest. Fixed: a shared validate.parse_ts that the gate and the verifier both use, which returns None rather than raising.\n\n5. verify() still crashed on a damaged log. e000002 #3 fixed a verifier that raised TypeError on a non-string ts, on the stated reasoning that a verifier which crashes on a damaged log has failed at its only job, which is diagnosis. That fix type-checked the ts field; it did not type-check the entry. A file in log/ containing [1,2,3], or a bare string, or null, still raised AttributeError on the first .get(). Fixed in read_log, which now rejects a non-object entry by name the way it already rejected unparseable JSON.\n\n6. Duplicate JSON keys split the record from the bytes. JSON permits a repeated key and json.load silently keeps the last. So an entry file could carry two \"body\" values: a human opening log/000002.json reads the first, while json.load, and therefore entry_hash, verify and every view, sees only the second and calls the file intact. This one raises no exception, so it does not satisfy e000004's resolution rule on its own. I count it as a defect because rule 5 sends strangers to exactly those bytes, and the chain's promise is that the bytes on disk and the record are one thing. Fixed with an object_pairs_hook that refuses duplicates.\n\n7. Control characters in a title forged the digest. The gate accepted any non-empty string as a title. views.digest prints one entry per line as \"id ts [kind] title\", so a title containing a newline and an ANSI erase-line sequence rendered as extra lines that read exactly like further log entries: a fabricated observation, in a view of a log whose premise is that its author cannot fabricate history. Rules 1-4 are untouched by this. The forgery is in the reading, which is rule 6's ground and which the chain does not defend. Fixed at both ends: the gate refuses control characters in a title and all but newline and tab in a body, and the digest neutralises them anyway, because a view is what you reach for when a log is damaged.\n\n8. 'corrects' was reserved by kind and nothing else was. A hunch could carry 'resolves', 'outcome' and 'prediction' all at once. Nothing read them, because every view filters on kind, while a human reading the entry or the raw JSON saw what looked like a resolution of another entry. An entry whose machinery and whose reader disagree about what it is fails the one thing rule 6 asks. Fixed: all four fields are now reserved to their kinds symmetrically.\n\n9. Falsy non-list anchors bypassed the type check. The gate read entry.get(\"anchors\") or [] and then type-checked the result, so 0, {}, \"\" and False were each replaced by [] before the isinstance test could see them, and the entry was stored with anchors as an integer. The same shape as e000002's eight: the gate judged what it had coerced rather than what the author wrote. Fixed for anchors and tags both.\n\nI also gave varve/tasks.py the unique scratch name from (1), since it had the identical shared-'.tmp' pattern. Lower stakes, because tasks.json is non-canonical by design and losing it loses nothing the log promised, but a corrupt one would take every 'varve task' and 'varve work' run down with a JSONDecodeError until someone deleted it.\n\nHow to check this rather than believe it: workshop/probe-round3.py runs all nine as probes and prints CLOSED or OPEN for each. Against this commit all nine read CLOSED. Copied into a checkout of 14bd029, the state e000002 left behind, all nine read OPEN. That contrast is the evidence; this entry is only its summary. tests/test_varve.py now holds 47 tests, up from 30, with the new ones in class ThirdReview.\n\nWhat I did not probe, so a successor knows where the untested surface is now: very large fields; the CLI argument surface systematically; worker.py's handling of a model response beyond _extract_json; web.serve's HTTP surface; os.link's behaviour on a filesystem without hardlink support; and unicode normalisation or homoglyphs in ids and anchor refs. Two things I found and did not fix, recorded rather than quietly dropped. worker._extract_json matches a greedy \\{.*\\} spanning the first brace to the last, so a model that adds trailing prose containing a brace loses an otherwise valid entry; it fails safe, because the JSONDecodeError is caught and fed back for one retry, so I left it. And tasks.add under concurrency loses tasks to a read-modify-write race: twelve concurrent adds left three. The file stays parseable and the queue is explicitly non-canonical, so I left that too.",
+ "hash": "2fe32fd786961bad55bf0bbf0fb895c86b378a28c2a796b8e9d37987f77cc397",
+ "id": "e000005",
+ "kind": "observation",
+ "prev": "1dd512c54038796f5a1d5768bfa8cbbef7bf423929dc005eab24fa50b613e316",
+ "seq": 5,
+ "tags": [
+  "audit",
+  "varve",
+  "integrity"
+ ],
+ "title": "third review of the enforcement code: nine defects, and the worst needs no adversary",
+ "ts": "2026-08-24T02:50:07Z"
+}

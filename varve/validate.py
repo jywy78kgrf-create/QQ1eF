@@ -10,12 +10,52 @@ verify, instead of pretending to detect claims by regex.
 import json
 import os
 import re
+from datetime import datetime, timezone
 
 ANCHOR_TYPES = {"url", "file", "query", "sha256", "entry"}
 
 # The one timestamp shape this log speaks, shared with store.verify so the
 # gate and the verifier cannot drift apart on what a valid ts looks like.
 TS_RE = re.compile(r"\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}Z")
+
+TS_FORMAT = "%Y-%m-%dT%H:%M:%SZ"
+
+
+def parse_ts(ts):
+    """The timestamp as a datetime, or None if it is not one.
+
+    Shape and meaning are different tests and only the first used to be run:
+    '2026-13-45T99:99:99Z' full-matches TS_RE and string-sorts after any real
+    2026 date, so it passed the gate's monotonicity check and verify() alike,
+    then raised ValueError from strptime inside views.digest. Every caller
+    that needs to know a ts is usable goes through here now (third review,
+    2026-08-24).
+    """
+    if not isinstance(ts, str) or not TS_RE.fullmatch(ts):
+        return None
+    try:
+        return datetime.strptime(ts, TS_FORMAT).replace(tzinfo=timezone.utc)
+    except ValueError:
+        return None
+
+
+# Control characters have no place in an authored field. The gate used to
+# accept any non-empty string, so a title could carry a newline and an ANSI
+# erase-line sequence and render in `varve digest` as extra lines that read
+# exactly like further log entries — a fabricated observation in a view of a
+# log whose premise is that its author cannot fabricate history. Rules 1-4 are
+# untouched by that; the forgery is in the reading, which is rule 6's ground
+# and which the chain does not defend (third review, 2026-08-24).
+#
+# A body is prose and may wrap and indent, so it keeps \n and \t. A title is
+# one line by definition and keeps neither.
+_CONTROL_IN_TITLE = re.compile(r"[\x00-\x1f\x7f-\x9f]")
+_CONTROL_IN_BODY = re.compile(r"[\x00-\x08\x0b-\x1f\x7f-\x9f]")
+
+
+def _control_name(ch):
+    return {"\n": "newline", "\r": "carriage return", "\t": "tab",
+            "\x1b": "escape", "\x00": "NUL"}.get(ch, "U+%04X" % ord(ch))
 
 # 'varve/store.py:170' and 'varve/store.py:170-190' are normal ways to cite a
 # line, so a trailing line reference is stripped before testing existence.
@@ -74,9 +114,22 @@ def check(entry, existing, root=None):
     # canonical(), which worker.py does not catch. Nothing reached the disk, but
     # the run died instead of the entry being rejected (second review,
     # 2026-08-23).
+    #
+    # Check it the way the writer will write it. This used to be a bare
+    # json.dumps(entry), whose default ensure_ascii=True escapes a lone
+    # surrogate to "\ud800" without complaint — while store.canonical uses
+    # ensure_ascii=False and entry_hash then calls .encode("utf-8"), which
+    # refuses surrogates outright. So the gate certified an entry the writer
+    # could not write, and the append died past the gate with a
+    # UnicodeEncodeError that worker.py, catching only ValueError, does not
+    # handle: defect 8 reopened, because the check was never run against the
+    # operation it was checking (third review, 2026-08-24). These arguments
+    # must stay identical to store.canonical's; test_gate_matches_the_writer
+    # pins that.
     try:
-        json.dumps(entry)
-    except (TypeError, ValueError) as exc:
+        json.dumps(entry, sort_keys=True, separators=(",", ":"),
+                   ensure_ascii=False).encode("utf-8")
+    except (TypeError, ValueError) as exc:  # UnicodeEncodeError is a ValueError
         problems.append("entry must be JSON-serialisable: %s" % exc)
         return problems  # every check below reads fields this one just distrusted
 
@@ -87,16 +140,32 @@ def check(entry, existing, root=None):
 
     if not _nonempty_str(entry.get("title")):
         problems.append("title is required")
+    elif _CONTROL_IN_TITLE.search(entry["title"]):
+        problems.append("title may not contain control characters (%s) — a title is "
+                        "one line, and a view that prints one entry per line will "
+                        "render the rest as entries that do not exist"
+                        % _control_name(_CONTROL_IN_TITLE.search(entry["title"]).group()))
     if not _nonempty_str(entry.get("body")):
         problems.append("body is required — an entry must be usable by a reader with no memory of its author")
+    elif _CONTROL_IN_BODY.search(entry["body"]):
+        problems.append("body may not contain control characters (%s); newline and tab are fine"
+                        % _control_name(_CONTROL_IN_BODY.search(entry["body"]).group()))
 
-    ids = {e["id"] for e in existing}
+    # .get, not subscript: an entry already on disk with no id used to make
+    # this line raise KeyError, so the gate could not even reject the NEXT
+    # append against a damaged log (third review, 2026-08-24).
+    ids = {e.get("id") for e in existing if isinstance(e, dict)} - {None}
 
-    anchors = entry.get("anchors") or []
+    # Type-check the FIELD, not the coerced value. `entry.get("anchors") or []`
+    # replaces any falsy non-list — 0, {}, "", False — with [] before the
+    # isinstance test can see it, so the entry was stored with anchors as an
+    # integer. Same shape as every defect in e000002: the gate judged what it
+    # had coerced rather than what the author wrote (third review, 2026-08-24).
+    anchors = entry.get("anchors", [])
     if not isinstance(anchors, list):
-        problems.append("anchors must be a list")
+        problems.append("anchors must be a list, not %s" % type(anchors).__name__)
         anchors = []
-    tags = entry.get("tags") or []
+    tags = entry.get("tags", [])
     if not (isinstance(tags, list) and all(isinstance(t, str) for t in tags)):
         problems.append("tags must be a list of strings")
     for a in anchors:
@@ -127,12 +196,22 @@ def check(entry, existing, root=None):
             "kind '%s' asserts facts and must carry at least one anchor a stranger "
             "could check — or be relabeled as a hunch/hypothesis" % kind
         )
+    # Kind-reserved fields, all of them. 'corrects' was reserved from the
+    # start and the other three were not, so a hunch could carry 'resolves',
+    # 'outcome' and 'prediction' at once: nothing read them, because every
+    # view filters on kind, while a human reading the entry or the raw JSON
+    # saw what looked like a resolution. An entry whose machinery and whose
+    # reader disagree about what it is fails the one thing rule 6 asks
+    # (third review, 2026-08-24).
+    for field, owner in (("corrects", "errata"), ("resolves", "resolution"),
+                         ("outcome", "resolution"), ("prediction", "prediction")):
+        if field in entry and kind != owner:
+            problems.append("'%s' is reserved for kind %s" % (field, owner))
+
     if kind == "errata":
         target = entry.get("corrects")
         if target not in ids:
             problems.append("errata must name an existing entry id in 'corrects'")
-    elif "corrects" in entry:
-        problems.append("'corrects' is reserved for kind errata")
 
     if kind == "prediction":
         p = entry.get("prediction") or {}
@@ -155,7 +234,8 @@ def check(entry, existing, root=None):
 
     if kind == "resolution":
         target = entry.get("resolves")
-        matched = next((e for e in existing if e["id"] == target), None)
+        matched = next((e for e in existing
+                        if isinstance(e, dict) and e.get("id") == target), None)
         if matched is None or matched.get("kind") != "prediction":
             problems.append("resolution must name an existing prediction entry id in 'resolves'")
         elif any(e.get("kind") == "resolution" and e.get("resolves") == target for e in existing):
@@ -175,8 +255,11 @@ def check(entry, existing, root=None):
         # for any other caller, and a non-string ts used to slip through here
         # (the checks below simply skipped it) and then crash the verifier on
         # its first comparison (second review, 2026-08-23).
-        if not (isinstance(ts, str) and TS_RE.fullmatch(ts)):
-            problems.append("ts must look like YYYY-MM-DDThh:mm:ssZ: %r" % (ts,))
+        # parse_ts, not TS_RE: matching the shape is not the same as naming a
+        # day, and a timestamp that names no day cannot order a chain
+        # (third review, 2026-08-24).
+        if parse_ts(ts) is None:
+            problems.append("ts must be a real time of the form YYYY-MM-DDThh:mm:ssZ: %r" % (ts,))
         elif ts < existing[0].get("ts", ""):
             problems.append("timestamp predates the founding — backdating is impossible by construction")
         elif ts < existing[-1].get("ts", ""):

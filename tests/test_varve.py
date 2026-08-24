@@ -12,6 +12,7 @@ import os
 import shutil
 import sys
 import tempfile
+import threading
 import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
@@ -91,7 +92,7 @@ class ChainIntegrity(LogTestCase):
             {"kind": "hunch", "title": "t", "body": "b", "ts": 12345},
             store.read_log(self.root),
         )
-        self.assertTrue(any("ts must look like" in p for p in problems))
+        self.assertTrue(any("ts must be a real time" in p for p in problems))
 
     def test_verify_reports_malformed_data_instead_of_crashing(self):
         """Second review 2026-08-23: verify raised TypeError comparing an int
@@ -110,7 +111,7 @@ class ChainIntegrity(LogTestCase):
         with open(os.path.join(self.root, "log", "000002.json"), "w") as f:
             f.write("{not json")
         problems = store.verify(self.root)  # must not raise
-        self.assertTrue(any("000002.json is not valid JSON" in p for p in problems))
+        self.assertTrue(any("000002.json is not a readable entry" in p for p in problems))
 
     def test_verify_catches_a_truncated_tail_only_with_a_witnessed_head(self):
         """Rule 5: the chain alone cannot see truncation."""
@@ -261,6 +262,220 @@ class Views(LogTestCase):
         store._write(self.root, entry)
         views.beliefs(self.root)   # must not raise
         views.digest(self.root, days=30)
+
+
+class ThirdReview(LogTestCase):
+    """Regressions for the nine defects of 2026-08-24 (entry e000005).
+
+    Each one is reproduced by workshop/probe-round3.py, which reads all nine
+    OPEN against commit 14bd029 and all nine CLOSED here. These tests are the
+    same probes pinned so they cannot reopen silently.
+    """
+
+    def _forge(self, mutate):
+        """Edit the last entry on disk and re-chain it, so verify() still
+        walks. This is the disk-holder the chain concedes it cannot catch —
+        the defect is verify calling the result INTACT and consumers then
+        crashing on it."""
+        entry = dict(store.read_log(self.root)[-1])
+        entry.update(seq=2, id="e000002", prev=entry["hash"])
+        mutate(entry)
+        entry["hash"] = store.entry_hash(entry)
+        store._write(self.root, entry)
+
+    # --- 1: the write race -------------------------------------------------
+
+    def test_concurrent_appends_never_forge_an_entry(self):
+        """Rule 1 + rule 3. Two writers racing for the same seq shared one
+        scratch path and interleaved into a well-formed entry carrying one
+        author's title beside another's body, under a hash covering neither —
+        a chain broken with no tamper, and unremovable under rule 1."""
+        errors = []
+
+        def w(i):
+            try:
+                store.append(self.root, {"kind": "hunch", "title": "writer-%d" % i,
+                                         "body": ("%d" % i) * 200000})
+            except ValueError:
+                pass          # losing the race is a correct outcome
+            except Exception as exc:
+                errors.append("%s: %s" % (type(exc).__name__, exc))
+
+        threads = [threading.Thread(target=w, args=(i,)) for i in range(8)]
+        for t in threads:
+            t.start()
+        for t in threads:
+            t.join()
+        self.assertEqual(errors, [], "a losing writer must be refused, not crash")
+        self.assertEqual(store.verify(self.root), [])
+        # Some writers legitimately succeed — a thread that reads the log after
+        # the winner commits gets the next seq honestly. What must never happen
+        # is a chimera: an entry whose body came from a different writer than
+        # its title. That is what the shared scratch path produced.
+        for e in store.read_log(self.root)[1:]:
+            writer = e["title"].rsplit("-", 1)[1]
+            self.assertEqual(set(e["body"]), {writer},
+                             "%s mixes writers: title %r, body from %r"
+                             % (e["id"], e["title"], sorted(set(e["body"]))))
+
+    def test_scratch_files_are_never_read_as_entries(self):
+        """The unique scratch name must stay outside the sequence pattern, or
+        a crashed writer's leftovers join the chain."""
+        with open(os.path.join(self.root, "log", ".000002.abc.tmp"), "w") as f:
+            f.write("{not an entry")
+        self.assertEqual(len(store.read_log(self.root)), 1)
+        self.assertEqual(store.verify(self.root), [])
+
+    # --- 2: the gate must check what the writer will actually do ------------
+
+    def test_gate_rejects_a_lone_surrogate(self):
+        """Defect 8 of e000002 reopened: the gate checked serialisability with
+        json.dumps' default ensure_ascii=True, which escapes surrogates, while
+        the writer uses ensure_ascii=False + utf-8, which refuses them. The
+        append then died past the gate with UnicodeEncodeError — which
+        worker.py, catching only ValueError, does not handle."""
+        with self.assertRaises(ValueError) as cm:
+            self.append(title="lone \ud800 surrogate")
+        self.assertIn("JSON-serialisable", str(cm.exception))
+        self.assertNotIsInstance(cm.exception, UnicodeEncodeError)
+
+    def test_gate_matches_the_writer(self):
+        """The general form of the above: anything the gate certifies, the
+        writer must be able to hash and write. Pins the two serialisations
+        together so they cannot drift apart again."""
+        for value in ("plain", "é中\U0001f300", "tab\there", "nul-free"):
+            entry = {"kind": "hunch", "title": "t", "body": value,
+                     "anchors": [], "tags": [], "ts": store.now_iso()}
+            if validate.check(entry, store.read_log(self.root), root=self.root):
+                continue          # rejected is fine; certified-then-unwritable is not
+            store.entry_hash(entry)   # must not raise
+
+    # --- 3 and 4: verify must not call an unusable entry intact -------------
+
+    def test_verify_reports_a_missing_id(self):
+        """Every consumer keys on e['id'] — including the gate's own id set,
+        so a log with an id-less entry could not even reject the next append."""
+        self._forge(lambda e: e.pop("id", None))
+        problems = store.verify(self.root)
+        self.assertTrue(any("malformed id" in p for p in problems), problems)
+
+    def test_verify_reports_an_id_that_contradicts_its_seq(self):
+        self._forge(lambda e: e.__setitem__("id", "e000099"))
+        problems = store.verify(self.root)
+        self.assertTrue(any("does not match seq" in p for p in problems), problems)
+
+    def test_verify_reports_a_date_that_names_no_day(self):
+        """'2026-13-45T99:99:99Z' full-matches TS_RE and sorts after its
+        predecessor, so shape-only checks passed it — then strptime raised
+        ValueError inside views.digest."""
+        self._forge(lambda e: e.__setitem__("ts", "2026-13-45T99:99:99Z"))
+        problems = store.verify(self.root)
+        self.assertTrue(any("malformed timestamp" in p for p in problems), problems)
+
+    def test_gate_rejects_a_date_that_names_no_day(self):
+        problems = validate.check(
+            {"kind": "hunch", "title": "t", "body": "b", "ts": "2026-02-30T00:00:00Z"},
+            store.read_log(self.root), root=self.root)
+        self.assertTrue(any("real time" in p for p in problems), problems)
+
+    # --- 5: verify must diagnose, never crash ------------------------------
+
+    def test_verify_reports_a_non_object_entry(self):
+        """e000002 #3 type-checked the ts FIELD; it did not type-check the
+        entry, so '[1,2,3]' in log/ still raised AttributeError on the first
+        .get() — the verifier failing at its only job, diagnosis."""
+        for content in ("[1, 2, 3]", '"a bare string"', "null", "42"):
+            with open(os.path.join(self.root, "log", "000002.json"), "w") as f:
+                f.write(content)
+            problems = store.verify(self.root)     # must not raise
+            self.assertTrue(any("expected a JSON object" in p for p in problems),
+                            "%s -> %s" % (content, problems))
+
+    def test_views_survive_a_non_object_entry(self):
+        with open(os.path.join(self.root, "log", "000002.json"), "w") as f:
+            f.write("[1, 2, 3]")
+        for call in (lambda: views.beliefs(self.root),
+                     lambda: views.digest(self.root, days=30),
+                     lambda: views.brier(self.root)):
+            with self.assertRaises(ValueError) as cm:
+                call()
+            self.assertIn("000002.json", str(cm.exception))
+
+    # --- 6: the bytes on disk and the record must be one thing -------------
+
+    def test_duplicate_json_keys_are_refused(self):
+        """JSON permits duplicates and json.load keeps the last, so a file
+        could show one 'body' to a human auditing the raw bytes and hand a
+        different one to the hash — with verify calling it intact. Rule 5
+        sends strangers to exactly those bytes."""
+        self.append(title="t", body="SECOND")
+        path = os.path.join(self.root, "log", "000002.json")
+        with open(path, encoding="utf-8") as f:
+            raw = f.read()
+        with open(path, "w", encoding="utf-8") as f:
+            f.write(raw.replace('"body": "SECOND"',
+                                '"body": "FIRST",\n "body": "SECOND"', 1))
+        problems = store.verify(self.root)     # must not raise
+        self.assertTrue(any("duplicate JSON key" in p for p in problems), problems)
+
+    # --- 7: rule 6 — the reading must not be forgeable ---------------------
+
+    def test_gate_rejects_control_characters_in_a_title(self):
+        """A title carrying a newline rendered in `varve digest` as further
+        lines that read exactly like additional entries."""
+        self.assertRejected("control characters",
+                            title="benign\n\x1b[2Ke000099 2026-01-01 [observation] FAKE")
+
+    def test_gate_rejects_escapes_in_a_body_but_allows_prose(self):
+        self.assertRejected("control characters", body="body with \x1b[2K escape")
+        self.append(title="fine", body="a body\nwith lines\tand tabs")   # must not raise
+
+    def test_digest_neutralises_control_characters_in_a_damaged_log(self):
+        """The gate refuses them now, but a view is what you reach for when a
+        log is damaged — including one written before the gate refused them."""
+        self._forge(lambda e: e.__setitem__("title", "x\ne000099 [observation] FAKE"))
+        out = views.digest(self.root, days=3650)
+        self.assertNotIn("\ne000099", out)
+
+    def test_digest_survives_an_unreadable_timestamp(self):
+        self._forge(lambda e: e.__setitem__("ts", "2026-13-45T99:99:99Z"))
+        out = views.digest(self.root, days=3650)      # must not raise
+        self.assertIn("unreadable timestamp", out)
+
+    # --- 8 and 9: the gate judges the field, not what it coerced it to -----
+
+    def test_kind_reserved_fields_are_symmetric(self):
+        """'corrects' was reserved to errata from the start and the other
+        three were not, so a hunch could carry resolves/outcome/prediction at
+        once: every view filters on kind and ignored them, while a human
+        reading the entry saw a resolution."""
+        self.assertRejected("'resolves' is reserved", resolves="e000001")
+        self.assertRejected("'outcome' is reserved", outcome=True)
+        self.assertRejected("'prediction' is reserved",
+                            prediction={"statement": "s", "p": 0.5, "resolve_by": "2030-01-01"})
+        self.assertRejected("'corrects' is reserved", corrects="e000001")
+
+    def test_beliefs_marks_a_resolved_prediction_as_resolved(self):
+        """'standing' reads as 'still open' to an amnesiac reader, and the
+        view was correction-aware but not resolution-aware."""
+        pred = self.append(kind="prediction", title="p",
+                           prediction={"statement": "x", "p": 0.6,
+                                       "resolve_by": "2026-12-01"})
+        rows = dict((e["id"], s) for e, s in views.beliefs(self.root))
+        self.assertEqual(rows[pred["id"]], "standing")
+        res = self.append(kind="resolution", title="r", resolves=pred["id"], outcome=False,
+                          anchors=[{"type": "entry", "ref": pred["id"]}])
+        rows = dict((e["id"], s) for e, s in views.beliefs(self.root))
+        self.assertEqual(rows[pred["id"]], "resolved FALSE by " + res["id"])
+
+    def test_falsy_anchors_do_not_bypass_the_type_check(self):
+        """`entry.get("anchors") or []` replaced any falsy non-list with []
+        before the isinstance test could see it, so the entry was stored with
+        anchors as an integer."""
+        for bad in (0, {}, "", False):
+            self.assertRejected("anchors must be a list", anchors=bad)
+        for bad in (0, {}, "", False):
+            self.assertRejected("tags must be a list", tags=bad)
 
 
 if __name__ == "__main__":
