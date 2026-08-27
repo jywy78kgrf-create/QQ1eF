@@ -115,8 +115,8 @@ def main(argv=None):
         print("e%06d %s" % (seq, h))
 
     elif args.cmd == "beliefs":
-        for e, status in views.beliefs(args.root):
-            print("%s [%s] %s — %s" % (e["id"], e["kind"], e["title"], status))
+        for line in views.beliefs_lines(args.root):
+            print(line)
 
     elif args.cmd == "task":
         if args.action == "add":
@@ -138,16 +138,8 @@ def main(argv=None):
         print(views.digest(args.root, days=args.days))
 
     elif args.cmd == "brier":
-        score, n, rows = views.brier(args.root)
-        if not n:
-            print("no resolved predictions yet")
-        else:
-            for pred, res, s in rows:
-                print("%s p=%.2f -> %s  (%.3f)  %s" % (
-                    pred["id"], pred["prediction"]["p"],
-                    "true" if res["outcome"] else "false", s,
-                    pred["prediction"]["statement"]))
-            print("brier %.3f over %d forecast(s)  [0=prophet, 0.25=coin at p=.5]" % (score, n))
+        for line in views.brier_lines(args.root):
+            print(line)
 
     elif args.cmd == "render":
         from . import web

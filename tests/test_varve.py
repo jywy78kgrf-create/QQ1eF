@@ -478,5 +478,64 @@ class ThirdReview(LogTestCase):
             self.assertRejected("tags must be a list", tags=bad)
 
 
+class FourthReview(LogTestCase):
+    """Regressions for the two defects of 2026-08-27 (entry e000013).
+
+    Both live in the same place: `varve beliefs` formatted this module's rows
+    itself, so it was a second renderer that had inherited neither lesson
+    views.py had learned. workshop/reader-probe.py reads both OPEN against
+    commit 46087f2 and CLOSED here.
+    """
+
+    def _forge(self, mutate):
+        """Write a claim-bearing entry at seq 2 straight to disk, bypassing
+        the gate. Same disk-holder as ThirdReview._forge: content verify calls
+        intact, which the readers must survive and must not misreport. It
+        forges onto the founding entry rather than after an appended one,
+        because _write now refuses to overwrite a name that exists."""
+        founding = store.read_log(self.root)[-1]
+        entry = {"seq": 2, "id": "e000002", "prev": founding["hash"],
+                 "ts": founding["ts"], "kind": "hunch", "title": "t",
+                 "body": "b", "anchors": [], "tags": []}
+        mutate(entry)
+        entry["hash"] = store.entry_hash(entry)
+        store._write(self.root, entry)
+
+    def test_beliefs_lines_survives_an_entry_with_no_title(self):
+        """verify() requires an id but not a title, so a title-less entry
+        walks the chain cleanly. views.beliefs used .get; the CLI's own
+        formatting did not, and raised KeyError out of `varve beliefs`."""
+        self._forge(lambda e: e.pop("title", None))
+        self.assertEqual(store.verify(self.root), [])
+        lines = views.beliefs_lines(self.root)
+        self.assertTrue(any(ln.startswith("e000002 ") for ln in lines))
+
+    def test_beliefs_lines_cannot_be_forged_by_a_title(self):
+        """The digest forgery of e000005 #7, one function away from where it
+        was fixed: a title carrying newlines printed as extra lines that read
+        exactly like further entries of a log with no such entries."""
+        self._forge(lambda e: e.__setitem__(
+            "title", "routine\ne000404 [observation] fabricated — standing"))
+        self.assertEqual(store.verify(self.root), [])
+        lines = views.beliefs_lines(self.root)
+        self.assertTrue(all("\n" not in ln for ln in lines))
+        self.assertFalse([ln for ln in lines if ln.startswith("e000404")])
+        # The text itself is not censored — only flattened. A reader must
+        # still see what the damaged entry actually says.
+        self.assertIn("fabricated", " ".join(lines))
+
+    def test_brier_lines_flattens_a_forged_statement(self):
+        """Same shape in the calibration view: a forecast's statement is
+        author-supplied text printed beside an entry id."""
+        pred = self.append(kind="prediction", title="p",
+                           prediction={"statement": "honest\ne000404 [resolution] fake",
+                                       "p": 0.6, "resolve_by": "2026-12-01"})
+        self.append(kind="resolution", title="r", resolves=pred["id"], outcome=True,
+                    anchors=[{"type": "entry", "ref": pred["id"]}])
+        lines = views.brier_lines(self.root)
+        self.assertTrue(all("\n" not in ln for ln in lines))
+        self.assertFalse([ln for ln in lines if ln.startswith("e000404")])
+
+
 if __name__ == "__main__":
     unittest.main()

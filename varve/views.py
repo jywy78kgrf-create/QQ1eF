@@ -115,6 +115,41 @@ def beliefs(root):
     return rows
 
 
+def beliefs_lines(root):
+    """beliefs(), rendered — one flattened line per claim-bearing entry.
+
+    beliefs() returns structured rows, so until now the CLI formatted them
+    itself with e["title"] and no _flat(). That made the CLI a SECOND renderer
+    of this module's data, and it inherited neither lesson this module has
+    learned: a title-less entry that verify calls intact raised KeyError out
+    of `varve beliefs`, and a title carrying newlines printed as extra lines
+    that read exactly like further log entries — the digest forgery of
+    e000005 defect 7, one function away from where it was fixed. Rendering
+    belongs here, beside _flat, where the module comment above is true
+    (fourth review, 2026-08-27; workshop/reader-probe.py).
+    """
+    return ["%s [%s] %s — %s" % (_flat(e.get("id", "?")), _flat(e.get("kind", "?")),
+                                 _flat(e.get("title", "")), _flat(status))
+            for e, status in beliefs(root)]
+
+
+def brier_lines(root):
+    """brier(), rendered. Same reasoning as beliefs_lines: a forecast's
+    statement is author-supplied text printed beside an entry id."""
+    score, n, rows = brier(root)
+    if not n:
+        return ["no resolved predictions yet"]
+    lines = []
+    for pred, res, s in rows:
+        p = (pred.get("prediction") or {}) if isinstance(pred.get("prediction"), dict) else {}
+        lines.append("%s p=%s -> %s  (%.3f)  %s" % (
+            _flat(pred.get("id", "?")), _flat(p.get("p", "?")),
+            "true" if res.get("outcome") else "false", s,
+            _flat(p.get("statement", "?"))))
+    lines.append("brier %.3f over %d forecast(s)  [0=prophet, 0.25=coin at p=.5]" % (score, n))
+    return lines
+
+
 def unresolved_predictions(entries):
     resolved = {e.get("resolves") for e in entries if e.get("kind") == "resolution"}
     return [e for e in entries

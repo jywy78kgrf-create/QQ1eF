@@ -34,6 +34,20 @@ import os
 import subprocess
 import sys
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+# Read published bytes with the LOG'S OWN parser, not a second one written
+# nearby. A witness that parses more permissively than varve does certifies as
+# "the same chain" a file varve refuses to read — which is how a duplicate-key
+# entry (e000005 defect 6) survived this tool's first version. e000005 defect 2
+# is the same lesson at the other end: a check must run the operation it
+# checks, not an approximation of it (fourth review, 2026-08-27).
+from varve.store import _reject_duplicate_keys
+
+
+def _loads(raw):
+    """json.loads with varve's own duplicate-key refusal."""
+    return json.loads(raw, object_pairs_hook=_reject_duplicate_keys)
+
 
 def git(*args, cwd=None):
     """Run git, returning stdout. Raises CalledProcessError on failure."""
@@ -81,7 +95,7 @@ def published_chain(repo, ref, logdir="log"):
             continue
         raw = git("cat-file", "blob", "%s:%s" % (ref, path), cwd=repo)
         try:
-            e = json.loads(raw)
+            e = _loads(raw)
         except ValueError as exc:
             problems.append("%s does not parse under %s (%s)" % (path, ref, exc))
             continue
@@ -105,31 +119,68 @@ def local_chain(root):
         if not name.endswith(".json"):
             continue
         with open(os.path.join(logdir, name), encoding="utf-8") as fh:
-            e = json.load(fh)
+            e = _loads(fh.read())
         entries.append((e.get("seq"), e.get("id"), e.get("hash")))
     entries.sort(key=lambda t: (t[0] is None, t[0]))
     return entries
 
 
 def compare(local, remote):
-    """('OK'|'BEHIND'|'AHEAD'|'DIVERGED', detail)."""
-    by_seq = {seq: (eid, h) for seq, eid, h in local}
-    for seq, eid, h in remote:
-        if seq not in by_seq:
-            return "DIVERGED", ("published entry %s (seq %s) has no local counterpart"
-                                % (eid, seq))
-        if by_seq[seq][1] != h:
+    """('OK'|'BEHIND'|'AHEAD'|'DIVERGED', detail).
+
+    Classify on the SET of sequence numbers, not on their count. The first
+    version of this function returned DIVERGED for any published seq absent
+    locally, which made AHEAD unreachable: a local checkout that was merely
+    stale — someone else had published entries this one had not pulled — was
+    reported as "one of them is not the log the other one is". That is the
+    false-alarm direction of e000011, reproduced inside the tool written to
+    catch it (fourth review, 2026-08-27; workshop/rule5-probe.py scenario D).
+    """
+    lmap = {seq: (eid, h) for seq, eid, h in local}
+    rmap = {seq: (eid, h) for seq, eid, h in remote}
+
+    # A hash difference at a shared sequence number is unambiguous: the two
+    # sides put different content at the same position. Report the earliest,
+    # since that is where the histories part company.
+    for seq in sorted(set(lmap) & set(rmap)):
+        if lmap[seq][1] != rmap[seq][1]:
             return "DIVERGED", (
                 "seq %s differs: local %s is %s, published %s is %s"
-                % (seq, by_seq[seq][0], _short(by_seq[seq][1]), eid, _short(h)))
-    if len(remote) == len(local):
-        return "OK", "published head matches local head"
-    if len(remote) < len(local):
-        missing = [eid for seq, eid, _ in local[len(remote):]]
+                % (seq, lmap[seq][0], _short(lmap[seq][1]),
+                   rmap[seq][0], _short(rmap[seq][1])))
+
+    only_local = sorted(set(lmap) - set(rmap))
+    only_remote = sorted(set(rmap) - set(lmap))
+
+    if only_local and only_remote:
+        return "DIVERGED", (
+            "each side holds entries the other lacks: local only %s, published only %s"
+            % (_seqs(only_local), _seqs(only_remote)))
+
+    # A missing entry in the MIDDLE is not staleness in either direction — a
+    # prefix is what "behind" means. A hole is a published chain that skips a
+    # sequence number it should contain, which no amount of fetching fixes.
+    if only_local:
+        if min(only_local) <= max(rmap, default=0):
+            return "DIVERGED", ("published chain has a hole: it lacks %s but "
+                                "carries later entries" % _seqs(only_local))
         return "BEHIND", ("published chain is a prefix: %d of %d entries. "
-                          "Unwitnessed: %s" % (len(remote), len(local), ", ".join(missing)))
-    return "AHEAD", ("published chain has %d entries, local has %d — the local "
-                     "checkout is stale, not the witness" % (len(remote), len(local)))
+                          "Unwitnessed: %s"
+                          % (len(rmap), len(lmap),
+                             ", ".join(lmap[s][0] or "seq %d" % s for s in only_local)))
+    if only_remote:
+        if min(only_remote) <= max(lmap, default=0):
+            return "DIVERGED", ("local chain has a hole: it lacks %s but "
+                                "carries later entries" % _seqs(only_remote))
+        return "AHEAD", ("published chain has %d entries, local has %d — the local "
+                         "checkout is stale, not the witness. Unpulled: %s"
+                         % (len(rmap), len(lmap),
+                            ", ".join(rmap[s][0] or "seq %d" % s for s in only_remote)))
+    return "OK", "published head matches local head"
+
+
+def _seqs(seqs):
+    return ", ".join("seq %d" % s for s in seqs)
 
 
 def _short(h):
@@ -146,10 +197,12 @@ def main(argv=None):
     root = os.path.abspath(args.root)
     ref = args.ref or default_ref(root)
 
+    fetched = False
     if not args.no_fetch:
         branch = ref.split("/", 1)[1] if ref.startswith("origin/") else None
         try:
             git("fetch", "origin", *( [branch] if branch else [] ), cwd=root)
+            fetched = True
         except subprocess.CalledProcessError as exc:
             print("warning: fetch failed, using cached ref (%s)"
                   % exc.stderr.decode("utf-8", "replace").strip().splitlines()[-1:],
@@ -170,12 +223,46 @@ def main(argv=None):
     print("\n%s — %s" % (status, detail))
 
     if status == "OK" and not problems:
+        if not fetched:
+            # The whole finding of e000011 was that a remote-tracking ref in a
+            # fresh container is a fossil written once at clone time. Read
+            # through one, this check reports OK on a branch whose tail has
+            # been force-pushed away — demonstrated, not merely argued, by
+            # workshop/rule5-probe.py scenario C. An unfetched OK is the exact
+            # shape of the failure the tool exists to detect, so it does not
+            # get to print the reassuring sentence or exit 0.
+            print("\nUNVERIFIED — no fetch was made, so this compares your chain "
+                  "against a CACHED pointer, not against what %s carries now." % ref)
+            print("The cached ref was last written %s." % _ref_age(root, ref))
+            print("A force-push or a truncated tail after that moment is "
+                  "invisible here and would still read OK.")
+            return 1
         print("\nA stranger following rule 5 to %s reads the same chain you hold." % ref)
         return 0
     if status == "BEHIND":
         print("\nNothing is corrupt. The published log simply stops earlier than "
               "yours, so nothing after it is witnessed by anyone but you.")
     return 1
+
+
+def _ref_age(repo, ref):
+    """When the cached ref last moved, as git records it — reflog first.
+
+    The reflog says when the POINTER was written, which is the question;
+    the commit date says when someone authored the commit it points at,
+    which is not. Fall back to the commit date only if there is no reflog.
+    """
+    try:
+        out = git("reflog", "show", "--date=iso", "-1", ref, cwd=repo).strip()
+        if out and "{" in out:
+            return "at " + out.split("{", 1)[1].split("}", 1)[0] + " (reflog)"
+    except subprocess.CalledProcessError:
+        pass
+    try:
+        return ("pointing at a commit dated "
+                + git("log", "-1", "--format=%cd", "--date=iso", ref, cwd=repo).strip())
+    except subprocess.CalledProcessError:
+        return "at an unknown time"
 
 
 def _fmt_head(entries):

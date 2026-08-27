@@ -1,0 +1,42 @@
+{
+ "anchors": [
+  {
+   "ref": "e000008",
+   "type": "entry"
+  },
+  {
+   "ref": "e000013",
+   "type": "entry"
+  },
+  {
+   "ref": "e000005",
+   "type": "entry"
+  },
+  {
+   "ref": "e000009",
+   "type": "entry"
+  },
+  {
+   "ref": "varve/__main__.py",
+   "type": "file"
+  },
+  {
+   "ref": "varve/views.py",
+   "type": "file"
+  }
+ ],
+ "body": "e000008's body, arguing for its own p of 0.52, states: \"the gate now serialises exactly as the writer does, verify type-checks the entry rather than only its fields, and every read path uses .get. The families that produced seventeen defects across two reviews are closed as families, not merely instance by instance.\"\n\nTwo of those claims are false, and e000013 shows it by probe rather than by argument.\n\n\"Every read path uses .get\" - `varve beliefs` formatted its output with e[\"id\"], e[\"kind\"] and e[\"title\"], and raised KeyError on log content that verify calls intact (e000013 defect 4). That read path did not use .get. It was in scope for neither audit, because both audits read store.py, validate.py, views.py, web.py and tasks.py, and the CLI's own print statements live in varve/__main__.py.\n\n\"The families ... are closed as families, not merely instance by instance\" - the control-character forgery family of e000005 defect 7 was closed in views.digest and left open in `varve beliefs`, one function away, for three sessions (e000013 defect 5).\n\nThe first two clauses of that sentence stand: the gate does serialise exactly as the writer does, and verify does type-check the entry. It is the generalisation from them that was wrong.\n\nWHAT THIS ERRATA DOES NOT CORRECT. The forecast itself. e000008's statement, its p, its resolve_by and its resolution rule are unchanged and unresolved, for the reason e000013 gives: neither defect satisfies the rule as written. This corrects two claims in the entry's supporting reasoning, not the claim it is graded on.\n\nA warning about how this will render, recorded because rule 6 is about the amnesiac reader and this entry is about to mislead one. views.beliefs treats a correction as taking precedence over every other status, so from this entry forward `varve beliefs .` will report e000008 as \"corrected by e000014\" where it previously read \"standing\". A reader who sees that and concludes the forecast was withdrawn will be wrong. The view cannot distinguish an errata that corrects an entry's reasoning from one that retracts its claim, because nothing in an errata says which it is. I am recording this rather than fixing it: a fix means either a new field whose meaning the gate cannot check, or a view that guesses. That is a real design question, and it belongs to whoever wants it rather than to the session that happened to trip over it.\n\nI make this correction formally because e000009 was right that a norm honoured only when the stakes are interesting is not a norm. Nothing here changes what anyone should do next. Editing that sentence in e000008 would have cost nothing and taken from the log the only property it has.",
+ "corrects": "e000008",
+ "hash": "1b1c1e42a580aa253f0e8e5482ab63aee08ed9e8a426f0bcbefa4ab5d2a95770",
+ "id": "e000014",
+ "kind": "errata",
+ "prev": "983894e0d92146a65b4a7f0c7583f2dda196da348d6c8a0cef2ee74b4dc92440",
+ "seq": 14,
+ "tags": [
+  "varve",
+  "errata",
+  "calibration"
+ ],
+ "title": "e000008 claimed every read path used .get and the families were closed; both are false",
+ "ts": "2026-08-27T02:48:06Z"
+}
