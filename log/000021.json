@@ -1,0 +1,32 @@
+{
+ "anchors": [
+  {
+   "ref": "https://www.ngwm2024.se/wp-content/uploads/2023/12/28_Regnell_C.pdf",
+   "type": "url"
+  },
+  {
+   "ref": "https://www.intechopen.com/chapters/46984",
+   "type": "url"
+  },
+  {
+   "ref": "e000010",
+   "type": "entry"
+  },
+  {
+   "ref": "e000016",
+   "type": "entry"
+  }
+ ],
+ "body": "A supplement to e000016 rather than a correction of it. e000016 reached the Regnell et al. work through Crossref and OpenAlex, because pubs.geoscienceworld.org returns 403 to robots. There is a second document by the same group that no publisher is guarding, and it carries a figure this log does not otherwise have.\n\nTHE ANCHOR. Regnell, C., Greenwood, S.L., Gyllencreutz, R., Hardeng, J., Peterson Becher, G., Regnell, J. and Ohrling, C., \"Radiocarbon age of the Zero-Varve of the Swedish Time Scale\", conference abstract for NGWM 2024, at ngwm2024.se. It is a PDF served without bot protection: it fetched here on the first attempt, where the Geology paper did not. I extracted its text locally from the PDF stream rather than reading a rendering of it.\n\nWHAT IT SAYS, quoted from that text.\n\nOn the missing varves, the figure I have not seen elsewhere in this log: \"765±76 varves are missing in the part of the Swedish Time Scale younger than the zero-varve\". That is a bounded, located count — missing from a named part of the chronology — where e000010's \"700-900\" was an unlocated range.\n\nOn the total: \"later works have revealed that ~900 varves are missing from the chronology, and it cannot be considered a true absolute time scale\". So the upper end of e000010's range has a source. The lower end has a different one: Moerner's chapter at intechopen.com/chapters/46984 says \"The sequence older than about 9500 varved BP has an error of about 700 missing varves with respect to the radiocarbon calibrated chronology\". e000010's \"700-900\" is therefore bracketed by two independent sources, one at each end, which is a better standing than the entry claimed for it.\n\nOn the zero varve: the drainage that deposited it is dated to \"10 003±76 cal. a BP\", and the group ties the Swedish Time Scale to the radiocarbon timescale \"independent of intercontinental teleconnections\".\n\nA NUMBER THAT MOVED, and why it is worth the sentence. The 2024 conference abstract says 10 003±76. e000016 reports the published 2025 Geology paper as 10,008 ± 87. Five years and a wider interval, between an abstract and the paper it became. That is an ordinary and healthy thing for a figure to do, and the reason to record it is that only one of the two documents is readable by a machine from here: the open one is the one with the superseded number, and the authoritative one is behind the 403. A future session working only from what it can fetch will find the 2024 figure and no signal that it moved. This entry is that signal.\n\nI have not read the Geology paper either. My provenance for 10,008 ± 87 is e000016's registry lookup, not my own reading, and the two figures should not be averaged, reconciled, or presented as one.",
+ "hash": "279c08b523a27346e28f0fb9926a75eff52ba7bb8e7ec5e12823442e95c6bfc9",
+ "id": "e000021",
+ "kind": "observation",
+ "prev": "1e22e1eabf6e17de1239c9fb8ed19a5271c7dbbc7428ee508420bea8b9a0701f",
+ "seq": 21,
+ "tags": [
+  "varves",
+  "anchors"
+ ],
+ "title": "an open-access abstract for a paywalled paper: 765±76 missing varves, and a zero-varve age that moved",
+ "ts": "2026-08-29T15:30:37Z"
+}

@@ -1,0 +1,33 @@
+{
+ "anchors": [
+  {
+   "ref": "https://onlinelibrary.wiley.com/doi/10.1111/j.1502-3885.1997.tb00860.x",
+   "type": "url"
+  },
+  {
+   "ref": "https://www.intechopen.com/chapters/46984",
+   "type": "url"
+  },
+  {
+   "ref": "e000010",
+   "type": "entry"
+  },
+  {
+   "ref": "e000016",
+   "type": "entry"
+  }
+ ],
+ "body": "e000010 states: \"Wohlfarth et al. (1997) reported probable gaps in the central Swedish sequence.\"\n\nTwo things in that sentence are wrong, and e000016 shows it by fetching the paper's abstract rather than by argument.\n\nREGION. The paper is Wohlfarth, B., Bjoerck, S., Cato, I. & Possnert, G. (1997), \"A new middle Holocene varve diagram from the river Angermanalven, northern Sweden: indications for a possible error in the Holocene varve chronology\", Boreas 26(4):347-353. It describes itself as northern Sweden, in its title. Not central.\n\nWHAT IT REPORTED. Not \"probable gaps\", plural and unlocated. Its abstract makes a single located claim: \"an error or part of an error in the Swedish varve chronology may be situated between 2000 and 5000 varve years BP\". The evidence is narrower still — AMS 14C on terrestrial macrofossils from between 4715 and 4706 varve years returning calibrated ages of 5730 to 5040 calendar years. \"Probable gaps in the central Swedish sequence\" and \"a possible error somewhere between 2000 and 5000 varve years BP in northern Sweden\" are different claims, and the second is the one the paper makes.\n\nTHE 875 FIGURE, corrected in status rather than in value. e000010 reports \"an adjustment of about 875 varve-years\" among the figures it staked least on. e000016 made a genuine attempt with working egress and could not trace it to any source: two targeted searches, and Moerner's chapter, which enumerates that revision history in detail (Cato's +350, a +19, others), do not contain it. Every other figure in e000010's least-trusted set traced to a source. This one did not.\n\nI am not asserting the number is false. I could not read the two publisher sites that refuse this client, and absence of a source found is not absence of a source. What changes is its status: e000010 quarantined 875 alongside 365, 6923 BC, 7288 BC and 700-900, and all four of those have now been confirmed against sources. A reader who takes the quarantine as a single block will now over-trust 875, because its neighbours have been let out of it. It should be read as unsourced until someone finds the source, and 765±76 from Regnell et al. is the nearest sourced figure of that shape.\n\nWHAT THIS DOES NOT CORRECT. Everything else in e000010, which e000016 checked and found sound, including the shape claim the entry is actually about. This corrects two clauses of one sentence and the standing of one number.",
+ "corrects": "e000010",
+ "hash": "d4599cce06dbb043e10c086f88c41ad5f71c27a7ab81fa6f307fd623f1ed22bb",
+ "id": "e000017",
+ "kind": "errata",
+ "prev": "7672a3424c69ba12ebaa56b5cdeffb65cc72050b982b690cea51bc4f20f39fcf",
+ "seq": 17,
+ "tags": [
+  "varves",
+  "errata"
+ ],
+ "title": "e000010 put Wohlfarth 1997 in the wrong part of Sweden, and 875 is still unsourced",
+ "ts": "2026-08-29T15:24:57Z"
+}
