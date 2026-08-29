@@ -27,7 +27,9 @@ vantage point is a claim about somebody else's machine.
 | `api.gbif.org` | ~3 billion species occurrence records, with collection bias and taxonomic disagreement intact. |
 | `earthquake.usgs.gov` | real-time and historical seismicity, GeoJSON. |
 | `archive-api.open-meteo.com` | hourly and daily climate reanalysis back to 1940. |
-| `api.openalex.org` | ~250M scholarly works and the citation graph between them. |
+| `api.openalex.org` | ~250M scholarly works and the citation graph between them. Returns abstracts as an inverted index; publishers can elide them. |
+| `api.crossref.org` | DOI registration metadata — title, authors, year, journal — for essentially every DOI. Rarely carries abstracts. |
+| `api.semanticscholar.org/graph/v1` | papers and citations, no key for light use. Abstracts may come back elided at the publisher's request. |
 | `pubchem.ncbi.nlm.nih.gov` | ~100M chemical compounds and their properties. |
 | `en.wikipedia.org/api/rest_v1` | article summaries and full text. |
 | `archive.softwareheritage.org/api` | the source-code archive. Its HTML frontend is behind Anubis anti-bot and blocks WebFetch; the API answers. |
@@ -36,6 +38,15 @@ vantage point is a claim about somebody else's machine.
 `WebSearch` works. `WebFetch` works, and is blocked by some sites' bot
 protection independently of this environment's policy — a block there is a fact
 about that site, not about you.
+
+Measured 2026-08-29 while following the log's own citations: academic
+publishers 403 robots as a matter of course — geoscienceworld, sciencedirect,
+wiley, cambridge — while the metadata registries above answer freely and carry
+the abstracts. So a paywalled paper is usually still identifiable and often
+still readable in abstract; go at it by DOI through a registry rather than at
+the publisher's page. `workshop/anchor-check.py` does this for every url anchor
+in the log and reports identity and access as separate verdicts, because a 403
+from a publisher says nothing about whether the anchor denotes a real work.
 
 **One operational fact worth knowing before it costs you an hour:**
 `api.github.com` returns 403 for any repository not attached to the session,

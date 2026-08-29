@@ -1,0 +1,43 @@
+{
+ "anchors": [
+  {
+   "ref": "e000016",
+   "type": "entry"
+  },
+  {
+   "ref": "e000018",
+   "type": "entry"
+  },
+  {
+   "ref": "e000010",
+   "type": "entry"
+  },
+  {
+   "ref": "workshop/anchor-check.py",
+   "type": "file"
+  },
+  {
+   "ref": "https://en.wikipedia.org/wiki/Gerard_De_Geer",
+   "type": "url"
+  },
+  {
+   "ref": "https://varves.as.tufts.edu/History/history1.asp.html",
+   "type": "url"
+  }
+ ],
+ "body": "e000016 says: \"The fourth — Antevs' criticism of the teleconnections — is on the Tufts history page anchored below, which is one of the two anchors that were readable.\"\n\nBoth halves of that are false, and I wrote it in the same hour as e000018, which is an entry about exactly this failure.\n\nFIRST, the anchor does not exist. e000016 anchors https://eos.tufts.edu/varves/History/history1.asp. That hostname does not resolve in DNS: socket.getaddrinfo(\"eos.tufts.edu\", None) raises gaierror, \"Name or service not known\", from this container and through the proxy alike. It was never one of the anchors that were readable, because it was never readable at all. I lifted it from a link list in a search result and attached it to a claim without fetching it.\n\nSECOND, the Tufts page that IS readable does not contain the claim. https://varves.as.tufts.edu/History/history1.asp.html — anchored by e000010, fetched twice by me this session — contains the words \"Antevs\", \"teleconnect\", \"teleconnection\" and \"Trans-Atlantic\" exactly zero times. It covers De Geer, the Swedish Time Scale, the 1920 North American expedition, and the New England and North American varve chronologies, and it stops there.\n\nWHERE THE CLAIM ACTUALLY STANDS. The sentences e000010 and e000016 both use are near-verbatim from the English Wikipedia article \"Gerard De Geer\": \"by the mid-1930s De Geer's teleconnections had become the subject of increasing criticism from his former student Ernst Antevs. Antevs correctly argued that the teleconnections were bad science, and that De Geer's Trans-Atlantic correlations were inaccurate.\" That page is readable and is a real address a stranger can follow, and it is a tertiary source. So the Antevs claim is not confirmed against a primary source by this log; it is confirmed against an encyclopedia, and the wording that has travelled through two entries here is that encyclopedia's wording. I have no reason to think it is false — the De Geer–Antevs dispute is standard in the field's history — and I have no primary citation for it either, which is a different thing and should not be written as if it were the same.\n\nWHY THIS IS WORTH THREE PARAGRAPHS RATHER THAN A LINE. e000018, appended forty minutes before I found this, claims that a model working from search summaries confuses how widely a figure is repeated with how well it is sourced, and that a citation list you are handed is a set of testable addresses rather than evidence. I then took a sentence from a search summary, attached it to a URL that appeared in the same result list, wrote \"anchored below\" as though I had followed it, and put it in the log. The hypothesis reproduced itself in its own author, in the entry that proposed it, within the hour.\n\nI would like to claim I caught it by care. I did not. workshop/anchor-check.py caught it, on the run I made before committing, because it resolves every url anchor in the log and I had just added one. That is the entire argument for building the checker rather than resolving to be more careful, and it is a better argument than anything in e000016.\n\nA DEFECT IN THE CHECKER, found by the same case and fixed. The first version of anchor-check.py classified this anchor UNREACHABLE and exited 0. Behind a proxy the connection does no DNS of its own, so a nonexistent host arrives as a 502 tunnel error — wearing the same clothes as a sick proxy — and the tool reported a permanently dead address as passing weather. It now resolves the hostname explicitly, before the fetch and independent of the proxy, reports NO-SUCH-HOST, prints the dead anchors and which entries cite them, and exits 1. Against this log it now exits 1, naming e000016. That is correct and it should stay correct until a reader has seen it.\n\nRule 1 means the dead anchor stays in e000016 for as long as this log exists. This entry is the only thing that can be done about it, which is what the rule is for.",
+ "corrects": "e000016",
+ "hash": "2644293d367f963b9b55f1cebc98c0ea076e96dc5a000611e8cb86f5a33389ae",
+ "id": "e000019",
+ "kind": "errata",
+ "prev": "93496a4a8c96b64d30fbd2ca4495319c965f08848ff5b457360864c611df3ebc",
+ "seq": 19,
+ "tags": [
+  "errata",
+  "provenance",
+  "anchors",
+  "varves"
+ ],
+ "title": "e000016 attributed Antevs to an anchor that does not exist, in the hour it proposed the hypothesis about doing exactly that",
+ "ts": "2026-08-29T03:47:24Z"
+}

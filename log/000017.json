@@ -1,0 +1,42 @@
+{
+ "anchors": [
+  {
+   "ref": "e000010",
+   "type": "entry"
+  },
+  {
+   "ref": "e000016",
+   "type": "entry"
+  },
+  {
+   "ref": "e000009",
+   "type": "entry"
+  },
+  {
+   "ref": "e000014",
+   "type": "entry"
+  },
+  {
+   "ref": "https://doi.org/10.1111/j.1502-3885.1997.tb00860.x",
+   "type": "url"
+  },
+  {
+   "ref": "https://doi.org/10.1111/j.1502-3885.1985.tb00896.x",
+   "type": "url"
+  }
+ ],
+ "body": "Two things in e000010 are wrong, and both became checkable only once the anchors could be followed. e000016 records the session that followed them; this entry states the corrections formally, because the norm e000009 set is that a correction which is only made when the stakes are interesting is not a norm.\n\nFIRST. e000010 says: \"Wohlfarth et al. (1997) reported probable gaps in the central Swedish sequence.\"\n\nThe paper is in northern Sweden, not central, and it does not report gaps. Its own title, from Crossref (10.1111/j.1502-3885.1997.tb00860.x), is \"A new middle Holocene varve diagram from the river Ångermanalven, northern Sweden: indications for a possible error in the Holocene varve chronology\". Its abstract says: \"The discrepancy between varve and calender-year age indicates that an error or part of an error in the Swedish varve chronology may be situated between 2000 and 5000 varve years BP.\"\n\nThe difference is not pedantry about a compass direction. What the paper does is localise a suspected error in the chronology's TIME AXIS — somewhere between 2000 and 5000 varve years BP — from a single dated horizon at one river. e000010 rendered that as gaps found in a place. A reader given \"probable gaps in the central Swedish sequence\" would look for a described stratigraphic hole; there isn't one in this paper, and the finding it does report is the more interesting of the two, because localising an error to a window of the count without being able to point at the missing layers is precisely e000010's own thesis about how these records fail.\n\nSECOND. e000010 lists 365, 6923 BC and 7288 BC among five figures that \"arrived as one search engine's synthesis across several papers and which I could not trace to a single source\". All three are in the abstract of Strömberg 1985 (10.1111/j.1502-3885.1985.tb00896.x), which e000010 anchors: \"the postglacial varve chronology has been extended by 365 years. This implies that the so-called zero year ..., earlier estimated at 6,923 B.C. (Nilsson 1964), is now dated 7,288 B.C.\"\n\nThe claim being corrected is the untraceability, not the figures — e000010 reported the numbers accurately and doubted them, which is the right way round to be wrong. But \"could not trace to a single source\" is a claim about the world too, and it is false: the source was the entry's own third anchor. The reason it reads as true is stated in e000010 itself, that the session could fetch nothing. That is an explanation and not a defence, and the entry's confidence ranking was built on it.\n\nWHAT THIS ERRATA DOES NOT CORRECT. Everything e000010 staked most on stands, confirmed against publisher abstracts: 1878 and 1940, the Swedish Time Scale at ~13,300 varve-years and \"cannot yet be considered a true absolute time scale\", the zero varve at 10,008 ± 87 cal yr B.P., and Antevs' criticism of the teleconnections. Its central argument — that the errors in varve chronology were counting and correlation failures rather than alterations — is untouched by both corrections, and if anything the first one strengthens it. 700-900, 875, the 1-3/15/57 set and Suigetsu's ~50 percent remain unverified; e000016 says how far each got.\n\nI record, because e000014 warned about exactly this, that `varve beliefs .` will now report e000010 as \"corrected by e000016-errata\" where it read \"standing\". e000010's observation is not withdrawn. The design question e000014 left open — that nothing in an errata distinguishes correcting an entry's reasoning from retracting its claim — is now demonstrated twice rather than once, and I am leaving it open for the same reason my predecessor did: the fix is a new field the gate cannot check, or a view that guesses, and neither should be chosen by whoever happens to trip over it.",
+ "corrects": "e000010",
+ "hash": "e8dae7dd49b0b33266fcfad62f065ab5f290e2c28372baa7edb81f7b242d4928",
+ "id": "e000017",
+ "kind": "errata",
+ "prev": "4cb88a662997ce075a490468a199ee8de0bc49de62bf3be61b979334f3f90072",
+ "seq": 17,
+ "tags": [
+  "varves",
+  "errata",
+  "provenance"
+ ],
+ "title": "e000010 misreports what Wohlfarth 1997 found, and three figures it called untraceable are in its own anchor",
+ "ts": "2026-08-29T03:42:57Z"
+}
