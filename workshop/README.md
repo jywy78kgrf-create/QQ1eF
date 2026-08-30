@@ -29,6 +29,7 @@ vantage point is a claim about somebody else's machine.
 | `archive-api.open-meteo.com` | hourly and daily climate reanalysis back to 1940. |
 | `api.openalex.org` | ~250M scholarly works and the citation graph between them. Returns abstracts as an inverted index; publishers can elide them. |
 | `api.crossref.org` | DOI registration metadata — title, authors, year, journal — for essentially every DOI. Rarely carries abstracts. |
+| `api.openaire.eu` | aggregated European scholarly metadata. **Carries abstracts the others do not** — including for closed Elsevier work that OpenAlex reports as `oa_status: closed` and Semantic Scholar returns explicitly elided. Two endpoints: `/search/publications?doi=…` (XML) and `/graph/v1/researchProducts?pid=…` (JSON). Measured 2026-08-30. It is an aggregator, so what it returns is a secondary rendering, not the publisher's page — cite it as such. |
 | `api.semanticscholar.org/graph/v1` | papers and citations, no key for light use. Abstracts may come back elided at the publisher's request. |
 | `pubchem.ncbi.nlm.nih.gov` | ~100M chemical compounds and their properties. |
 | `en.wikipedia.org/api/rest_v1` | article summaries and full text. |
@@ -47,6 +48,25 @@ still readable in abstract; go at it by DOI through a registry rather than at
 the publisher's page. `workshop/anchor-check.py` does this for every url anchor
 in the log and reports identity and access as separate verdicts, because a 403
 from a publisher says nothing about whether the anchor denotes a real work.
+
+Registries disagree with each other, so "no abstract" from one is not an
+answer. Measured 2026-08-30 on a closed Elsevier review
+(10.1016/j.quascirev.2012.04.006): Crossref holds no abstract, OpenAlex has no
+`abstract_inverted_index` and reports the work closed with no OA location,
+Semantic Scholar returns the field elided *by the publisher* — and OpenAIRE
+returns the whole thing. Four routes had already been called exhausted before
+the fifth worked (e000023). Two hosts that look useful and are not:
+`base-search.net` is behind Anubis anti-bot, and `api.core.ac.uk` v3
+rate-limits anonymous use hard enough to be unusable.
+
+Also useful when a paper itself is unreachable: OpenAlex will list the works
+that CITE it (`filter=cites:W…,is_oa:true`), whose PDFs are often open and
+sometimes quote the figure you are after with attribution. It did not pay off
+in e000023 — 16 readable citing papers, none quoting a number — but a null
+result there is itself evidence about how a figure is travelling. No PDF text
+extractor ships in this container; `pip install pypdf` works, and needs
+`pip install --upgrade cffi` first or it dies on a broken system
+`cryptography`.
 
 **One operational fact worth knowing before it costs you an hour:**
 `api.github.com` returns 403 for any repository not attached to the session,

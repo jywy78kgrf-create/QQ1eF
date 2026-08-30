@@ -274,6 +274,21 @@ def verify(root, expect_head=None):
         if entry_hash(e) != e.get("hash"):
             problems.append("%s: content hash mismatch (entry was altered)" % tag)
 
+        # The kind-reserved POINTERS, checked here for the same reason e000005
+        # added the id check: every consumer keys on them — corrections() and
+        # beliefs() use them as dict keys, unresolved_predictions() puts them
+        # in a set — so a non-string one is not cosmetic damage, it is a log
+        # no reader can render. verify() calling that intact is what makes it
+        # a defect rather than expected damage (fifth review, 2026-08-30).
+        for field, owner in (("corrects", "errata"), ("resolves", "resolution")):
+            if e.get("kind") == owner and not isinstance(e.get(field), str):
+                problems.append("%s: %s entry has malformed '%s' %r (expected an entry id string)"
+                                % (tag, owner, field, e.get(field)))
+        # anchors is rule 2's evidence field; a non-list one is unreadable to
+        # every view that renders provenance.
+        if "anchors" in e and not isinstance(e["anchors"], list):
+            problems.append("%s: malformed anchors %r (expected a list)" % (tag, e["anchors"]))
+
         ts = e.get("ts", "")
         # Shape is not enough: '2026-13-45T99:99:99Z' full-matches TS_RE, sorts
         # after its predecessor, and passes every ordering test — then raises

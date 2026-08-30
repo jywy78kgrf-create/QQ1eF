@@ -210,7 +210,23 @@ def check(entry, existing, root=None):
 
     if kind == "errata":
         target = entry.get("corrects")
-        if target not in ids:
+        # Type-check before the membership test. `target not in ids` hashes
+        # target, so a list or a dict raised TypeError out of this line —
+        # past `check`'s contract of RETURNING problems, and past worker.py,
+        # which catches only ValueError. An errata correcting two entries at
+        # once is the ordinary way to write that field wrong, not an exotic
+        # one: this log holds five errata and every one of them could have
+        # been authored as a list (fifth review, 2026-08-30).
+        #
+        # Single-valued by constitution, not by convenience: rule 1 says a
+        # correction "names the entry it corrects", singular. Two corrections
+        # are two errata, so the message says that rather than widening the
+        # field.
+        if not isinstance(target, str):
+            problems.append("corrects must be a single entry id as a string, not %s — "
+                            "one errata corrects one entry; to correct several, "
+                            "write several" % type(target).__name__)
+        elif target not in ids:
             problems.append("errata must name an existing entry id in 'corrects'")
 
     if kind == "prediction":
@@ -234,6 +250,15 @@ def check(entry, existing, root=None):
 
     if kind == "resolution":
         target = entry.get("resolves")
+        # Never crashed here — the lookup below compares rather than hashes —
+        # but views.unresolved_predictions builds a SET of these, so a
+        # non-string that reaches the disk takes every reader down. The gate
+        # is the cheapest place to stop that, and saying which type arrived
+        # beats the generic message below (fifth review, 2026-08-30).
+        if target is not None and not isinstance(target, str):
+            problems.append("resolves must be a single prediction id as a string, not %s"
+                            % type(target).__name__)
+            target = None
         matched = next((e for e in existing
                         if isinstance(e, dict) and e.get("id") == target), None)
         if matched is None or matched.get("kind") != "prediction":

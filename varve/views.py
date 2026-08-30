@@ -79,7 +79,14 @@ def corrections(entries):
     stays intact, the *reading* carries the warning."""
     out = {}
     for e in entries:
-        if e.get("kind") == "errata" and e.get("corrects"):
+        # isinstance, not truthiness. `out.setdefault(e["corrects"], ...)`
+        # HASHES the field, so an errata whose 'corrects' is a list or a dict
+        # raised TypeError here — on log content `varve verify` calls intact,
+        # and out of the one function every other view depends on. The gate
+        # now refuses those, but a view is what you reach for when a log is
+        # damaged, including one written before the gate refused them
+        # (fifth review, 2026-08-30).
+        if e.get("kind") == "errata" and isinstance(e.get("corrects"), str) and e["corrects"]:
             out.setdefault(e["corrects"], []).append(e.get("id", "?"))
     return out
 
@@ -97,20 +104,29 @@ def beliefs(root):
     # 2026-08-24).
     resolved = {}
     for e in entries:
-        if e.get("kind") == "resolution" and e.get("resolves"):
+        # Same hashing hazard as corrections() above: this is a dict key.
+        if e.get("kind") == "resolution" and isinstance(e.get("resolves"), str) and e["resolves"]:
             resolved[e["resolves"]] = (e.get("id", "?"), e.get("outcome"))
     rows = []
     for e in entries:
         if e.get("kind") in ("observation", "hypothesis", "hunch", "prediction"):
             eid = e.get("id")
+            # Both, when both apply. These were an if/elif, so a forecast that
+            # had been corrected AND graded reported only the correction — and
+            # a reader who is told nothing about the grade concludes the
+            # forecast is still open, which is e000009's finding exactly:
+            # 'standing' reads as 'still open' to the amnesiac reader rule 6
+            # is written for, and silence reads the same way. The correction
+            # comes first because it is the do-not-act-on-this warning
+            # (fifth review, 2026-08-30).
+            parts = []
             if eid in corr:
-                status = "corrected by " + ", ".join(corr[eid])
-            elif eid in resolved:
+                parts.append("corrected by " + ", ".join(corr[eid]))
+            if eid in resolved:
                 rid, outcome = resolved[eid]
-                status = "resolved %s by %s" % (
-                    {True: "TRUE", False: "FALSE"}.get(outcome, "?"), rid)
-            else:
-                status = "standing"
+                parts.append("resolved %s by %s" % (
+                    {True: "TRUE", False: "FALSE"}.get(outcome, "?"), rid))
+            status = "; ".join(parts) if parts else "standing"
             rows.append((e, status))
     return rows
 
@@ -151,7 +167,13 @@ def brier_lines(root):
 
 
 def unresolved_predictions(entries):
-    resolved = {e.get("resolves") for e in entries if e.get("kind") == "resolution"}
+    # A SET of author-supplied values: an unhashable 'resolves' on disk took
+    # down digest and brier as well as this function. An unreadable pointer
+    # resolves nothing, so it is dropped rather than matched — which leaves
+    # the prediction reported as still open, the safe direction to be wrong
+    # in (fifth review, 2026-08-30).
+    resolved = {e.get("resolves") for e in entries
+                if e.get("kind") == "resolution" and isinstance(e.get("resolves"), str)}
     return [e for e in entries
             if e.get("kind") == "prediction" and e.get("id") not in resolved]
 
@@ -167,7 +189,13 @@ def brier(root):
     by_id = {e.get("id"): e for e in entries}
     rows = []
     for r in (e for e in entries if e.get("kind") == "resolution"):
-        pred = by_id.get(r.get("resolves"))
+        # dict.get hashes its argument, so an unhashable 'resolves' crashed
+        # the calibration report here too. A resolution that points at nothing
+        # readable scores nothing, like the damaged predictions below.
+        ref = r.get("resolves")
+        if not isinstance(ref, str):
+            continue
+        pred = by_id.get(ref)
         if pred is None:
             continue
         # A damaged prediction scores nothing rather than taking the whole

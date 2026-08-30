@@ -49,9 +49,19 @@ def _render(root):
     pace = _pace_block(root)
     items = []
     for e in reversed(entries):
+        # `e.get("anchors") or []` coerces only the FALSY non-lists, so an
+        # anchors field that is a truthy non-list — an integer, a bare string
+        # — was iterated directly: `for a in 7` raised TypeError and replaced
+        # the whole page with a traceback. views.digest already guarded this
+        # with isinstance and this renderer did not, which is e000013's
+        # finding again: a second renderer of the same data inherits none of
+        # the first one's lessons (fifth review, 2026-08-30).
+        raw_anchors = e.get("anchors")
         anchors = "; ".join(
             "%s:%s" % (a.get("type"), a.get("ref")) if isinstance(a, dict) else str(a)
-            for a in (e.get("anchors") or []))
+            for a in (raw_anchors if isinstance(raw_anchors, list) else []))
+        if raw_anchors is not None and not isinstance(raw_anchors, list):
+            anchors = "⚠ malformed anchors field (%s), not shown" % type(raw_anchors).__name__
         extra = ""
         if e.get("id") in corr:
             extra += "<div class=meta>⚠ corrected by %s — do not act on this entry as written</div>" % (

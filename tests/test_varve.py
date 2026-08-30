@@ -17,7 +17,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from varve import store, validate, views  # noqa: E402
+from varve import store, validate, views, web  # noqa: E402
 
 
 class LogTestCase(unittest.TestCase):
@@ -535,6 +535,147 @@ class FourthReview(LogTestCase):
         lines = views.brier_lines(self.root)
         self.assertTrue(all("\n" not in ln for ln in lines))
         self.assertFalse([ln for ln in lines if ln.startswith("e000404")])
+
+
+class FifthReview(LogTestCase):
+    """Regressions for the defects of 2026-08-30 (entry e000023).
+
+    The kind-reserved POINTER fields — 'corrects' on an errata, 'resolves' on
+    a resolution — as something other than a string. Every view uses them as
+    a dict key or a set member, so an unhashable one did not misrender: it
+    raised TypeError out of views.corrections, the function every other view
+    is built on. workshop/probe-round5.py reads 14 rows OPEN against commit
+    ac6e0c8 and 0 here.
+    """
+
+    def _forge(self, mutate):
+        """A claim-bearing entry written straight to disk, bypassing the gate
+        — the disk-holder of ThirdReview._forge and FourthReview._forge."""
+        founding = store.read_log(self.root)[-1]
+        entry = {"seq": 2, "id": "e000002", "prev": founding["hash"],
+                 "ts": founding["ts"], "kind": "hunch", "title": "t",
+                 "body": "b", "anchors": [], "tags": []}
+        mutate(entry)
+        entry["hash"] = store.entry_hash(entry)
+        store._write(self.root, entry)
+
+    def _readers_survive(self):
+        """Every reader the repository ships, over the current log."""
+        views.beliefs_lines(self.root)
+        views.digest(self.root)
+        views.brier_lines(self.root)
+        web._render(self.root)
+
+    def test_gate_rejects_corrects_as_a_list_instead_of_crashing(self):
+        """`target not in ids` hashes target, so an errata correcting two
+        entries at once died with TypeError raised past check()'s contract of
+        returning problems — and past worker.py, which catches only
+        ValueError. An entry the gate cannot reject is an entry that kills
+        the run instead of becoming feedback the author can fix."""
+        self.assertRejected("corrects must be a single entry id",
+                            kind="errata", corrects=["e000001", "e000001"])
+
+    def test_gate_rejects_corrects_as_a_dict(self):
+        self.assertRejected("corrects must be a single entry id",
+                            kind="errata", corrects={"id": "e000001"})
+
+    def test_gate_still_accepts_a_well_formed_errata(self):
+        """The fix must not narrow what rule 1 requires: one errata naming
+        one entry is the constitutional shape and has to keep working."""
+        e = self.append(kind="errata", title="correction", corrects="e000001")
+        self.assertEqual(e["corrects"], "e000001")
+        self.assertEqual(store.verify(self.root), [])
+
+    def test_gate_rejects_resolves_as_a_list(self):
+        pred = self.append(kind="prediction", title="p",
+                           prediction={"statement": "s", "p": 0.5,
+                                       "resolve_by": "2027-01-01"})
+        self.assertRejected("resolves must be a single prediction id",
+                            kind="resolution", resolves=[pred["id"]], outcome=True,
+                            anchors=[{"type": "entry", "ref": pred["id"]}])
+
+    def test_verify_reports_a_malformed_corrects(self):
+        """verify() called this intact while every reader refused to render
+        it. A log no reader can read is not an intact log (e000005 #4's
+        argument, applied to the pointer fields)."""
+        self._forge(lambda e: e.update(kind="errata", corrects=["e000001"]))
+        problems = store.verify(self.root)
+        self.assertTrue([p for p in problems if "malformed 'corrects'" in p], problems)
+
+    def test_verify_reports_a_malformed_resolves(self):
+        self._forge(lambda e: e.update(kind="resolution", resolves=["e000001"],
+                                       outcome=True))
+        problems = store.verify(self.root)
+        self.assertTrue([p for p in problems if "malformed 'resolves'" in p], problems)
+
+    def test_verify_reports_a_malformed_anchors(self):
+        """`anchors` is rule 2's evidence field. A truthy non-list one was
+        iterated directly by the web renderer."""
+        self._forge(lambda e: e.update(anchors=7))
+        problems = store.verify(self.root)
+        self.assertTrue([p for p in problems if "malformed anchors" in p], problems)
+
+    def test_readers_survive_corrects_as_a_list(self):
+        """The gate refuses these now, but a view is what you reach for when
+        a log is damaged — including one written before the gate refused
+        them. The reader defends itself rather than trusting the gate did."""
+        self._forge(lambda e: e.update(kind="errata", corrects=["e000001"]))
+        self._readers_survive()
+
+    def test_readers_survive_corrects_as_a_dict(self):
+        self._forge(lambda e: e.update(kind="errata", corrects={"id": "e000001"}))
+        self._readers_survive()
+
+    def test_readers_survive_resolves_as_a_list(self):
+        """This one took down digest and brier as well: unresolved_predictions
+        builds a SET of 'resolves' values, and brier passes one to dict.get."""
+        self._forge(lambda e: e.update(kind="resolution", resolves=["e000001"],
+                                       outcome=True))
+        self._readers_survive()
+
+    def test_web_survives_a_truthy_non_list_anchors(self):
+        """`e.get("anchors") or []` coerces only the FALSY non-lists, so an
+        integer was iterated: `for a in 7`. views.digest already guarded this
+        with isinstance and the web renderer did not — e000013's finding
+        again, in the other direction."""
+        self._forge(lambda e: e.update(anchors=7))
+        page = web._render(self.root)
+        self.assertIn("malformed anchors field", page)
+
+    def test_a_damaged_pointer_leaves_a_prediction_reported_as_open(self):
+        """Which way the reader errs matters. An unreadable 'resolves' is
+        dropped rather than matched, so the prediction it pointed at stays
+        listed as open — the safe direction to be wrong in, because the other
+        one silently retires a forecast nobody graded."""
+        pred = self.append(kind="prediction", title="p",
+                           prediction={"statement": "s", "p": 0.5,
+                                       "resolve_by": "2027-01-01"})
+        founding = store.read_log(self.root)[-1]
+        entry = {"seq": 3, "id": "e000003", "prev": founding["hash"],
+                 "ts": founding["ts"], "kind": "resolution", "title": "r",
+                 "body": "b", "anchors": [], "tags": [],
+                 "resolves": [pred["id"]], "outcome": True}
+        entry["hash"] = store.entry_hash(entry)
+        store._write(self.root, entry)
+        still_open = views.unresolved_predictions(store.read_log(self.root))
+        self.assertIn(pred["id"], [e["id"] for e in still_open])
+
+
+    def test_a_corrected_prediction_still_reports_that_it_was_graded(self):
+        """An if/elif reported only the correction, so a forecast that had
+        been both corrected and resolved looked ungraded. e000009 fixed the
+        same misreading once — a reader told nothing about the grade concludes
+        the forecast is still open."""
+        pred = self.append(kind="prediction", title="p",
+                           prediction={"statement": "s", "p": 0.5,
+                                       "resolve_by": "2027-01-01"})
+        self.append(kind="errata", title="e", corrects=pred["id"])
+        res = self.append(kind="resolution", title="r", resolves=pred["id"],
+                          outcome=True,
+                          anchors=[{"type": "entry", "ref": pred["id"]}])
+        status = dict((e["id"], s) for e, s in views.beliefs(self.root))[pred["id"]]
+        self.assertIn("corrected by", status)
+        self.assertIn("resolved TRUE by %s" % res["id"], status)
 
 
 if __name__ == "__main__":
